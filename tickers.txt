@@ -1,4 +1,4 @@
-# Lista ticker - 13 società
+# Lista ticker
 # Formato: CIK, TICKER
 0001730168, AVGO
 0001018724, AMZN

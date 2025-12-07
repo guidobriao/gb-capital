@@ -1,0 +1,6 @@
+requests
+pandas
+matplotlib
+darts
+lightgbm
+scikit-learn
