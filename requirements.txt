@@ -1,6 +1,8 @@
-requests
+numpy<2.0
 pandas
 matplotlib
-darts
-lightgbm
+requests
 scikit-learn
+lightgbm
+darts
+polars-lts-cpu

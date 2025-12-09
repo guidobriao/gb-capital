@@ -236,24 +236,6 @@ print("\n" + "=" * 80)
 print("RIEPILOGO FINALE")
 print("=" * 80)
 
-# File consolidato 10-Q
-if all_company_data_10q:
-    combined_10q = pd.concat(all_company_data_10q, ignore_index=True)
-    consolidated_file_10q = "data/ALL_COMPANIES_fcf_10Q.csv"
-    combined_10q.to_csv(consolidated_file_10q, index=False)
-    print(f"✓ File consolidato 10-Q esportato: {consolidated_file_10q}")
-    print(f"  Aziende con dati 10-Q: {len(all_company_data_10q)}")
-    print(f"  Record totali 10-Q: {len(combined_10q)}")
-
-# File consolidato 10-K
-if all_company_data_10k:
-    combined_10k = pd.concat(all_company_data_10k, ignore_index=True)
-    consolidated_file_10k = "data/ALL_COMPANIES_fcf_10K.csv"
-    combined_10k.to_csv(consolidated_file_10k, index=False)
-    print(f"✓ File consolidato 10-K esportato: {consolidated_file_10k}")
-    print(f"  Aziende con dati 10-K: {len(all_company_data_10k)}")
-    print(f"  Record totali 10-K: {len(combined_10k)}")
-
 # Statistiche riassuntive
 if all_company_data_10q or all_company_data_10k:
     print("\nULTIMO FCF PER AZIENDA:")
