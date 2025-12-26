@@ -1,3 +1,8 @@
+.DS_Store
+.idea/
+.vscode/
+data/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -169,6 +174,18 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# custom
+.DS_Store
+.idea/
 data/
-result/
-tickers (1).txt
+
+# .vscode
+.vscode/
+# Additional stuff
+.flake8
+.envrc
+plots/
+lightning_logs/
+
+custom/

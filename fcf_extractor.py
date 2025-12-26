@@ -3,6 +3,7 @@
 """
 SEC EDGAR Free Cash Flow Historical Data Extractor
 Multi-Company Version - Separate 10-Q and 10-K datasets
+FCFF = Operating Cash Flow + Interest × (1-T) - CapEx
 """
 
 import requests
@@ -12,6 +13,128 @@ from datetime import datetime
 import time
 import os
 
+
+def load_fcff_from_yfinance(ticker: str) -> pd.DataFrame:
+    """
+    Carica FCFF storici annuali da yfinance API
+    Returns DataFrame con colonne: fy, Free Cash Flow, Tax Rate, Total Debt, Equity, Kd, end
+    Returns empty DataFrame se dati non disponibili
+    """
+    import yfinance as yf
+
+    try:
+        stock = yf.Ticker(ticker)
+
+        # Get financial statements
+        cf = stock.cashflow  # Cash flow statement
+        bs = stock.balance_sheet  # Balance sheet
+        inc = stock.income_stmt  # Income statement
+
+        if cf.empty or bs.empty or inc.empty:
+            print(f"⚠ Incomplete financial data from yfinance for {ticker}")
+            return pd.DataFrame()
+
+        # Transpose per avere anni come righe
+        cf = cf.T
+        bs = bs.T
+        inc = inc.T
+
+        # Calculate FCFF components
+        data = []
+        for date in cf.index:
+            try:
+                # Operating Cash Flow
+                ocf = cf.loc[date, 'Operating Cash Flow'] if 'Operating Cash Flow' in cf.columns else None
+
+                # CapEx
+                capex = cf.loc[date, 'Capital Expenditure'] if 'Capital Expenditure' in cf.columns else 0
+
+                # Interest Expense
+                interest = inc.loc[
+                    date, 'Interest Expense'] if date in inc.index and 'Interest Expense' in inc.columns else 0
+
+                # Tax Rate
+                tax_expense = inc.loc[
+                    date, 'Tax Provision'] if date in inc.index and 'Tax Provision' in inc.columns else 0
+                pretax_income = inc.loc[
+                    date, 'Pretax Income'] if date in inc.index and 'Pretax Income' in inc.columns else 1
+                tax_rate = tax_expense / pretax_income if pretax_income != 0 else 0.21
+                tax_rate = max(0, min(0.5, tax_rate))  # Clamp to [0, 0.5]
+
+                # Total Debt
+                lt_debt = bs.loc[date, 'Long Term Debt'] if date in bs.index and 'Long Term Debt' in bs.columns else 0
+                st_debt = bs.loc[date, 'Current Debt'] if date in bs.index and 'Current Debt' in bs.columns else 0
+                total_debt = lt_debt + st_debt
+
+                # Equity
+                equity = bs.loc[
+                    date, 'Stockholders Equity'] if date in bs.index and 'Stockholders Equity' in bs.columns else 0
+
+                # Calculate FCFF
+                if ocf is not None:
+                    fcff = ocf + interest * (1 - tax_rate) - abs(capex)
+                else:
+                    continue  # Skip if no OCF
+
+                # Kd (cost of debt)
+                kd = interest / total_debt if total_debt > 0 else 0.05
+
+                # Fiscal year
+                fy = date.year
+
+                data.append({
+                    'fy': fy,
+                    'Free Cash Flow': fcff,
+                    'Tax Rate': tax_rate,
+                    'Total Debt': total_debt,
+                    'Equity': equity,
+                    'Kd': kd,
+                    'end': date,
+                    'form': '10-K'  # Mark as annual data
+                })
+
+            except Exception as e:
+                continue
+
+        if not data:
+            return pd.DataFrame()
+
+        df = pd.DataFrame(data)
+        df = df.sort_values('fy')
+
+        print(f"✓ Loaded {len(df)} years from yfinance for {ticker} (FY {df['fy'].min()}-{df['fy'].max()})")
+        return df
+
+    except Exception as e:
+        print(f"⚠ yfinance failed for {ticker}: {str(e)}")
+        return pd.DataFrame()
+
+
+def merge_yfinance_and_sec_data(df_yf: pd.DataFrame, df_sec: pd.DataFrame) -> pd.DataFrame:
+    """
+    Merge yfinance e SEC EDGAR data
+    Priority: yfinance sovrascrive SEC EDGAR per gli anni disponibili
+    SEC EDGAR riempie gli anni più vecchi non disponibili in yfinance
+    """
+    if df_yf.empty:
+        return df_sec
+    if df_sec.empty:
+        return df_yf
+
+    # Get years from both sources
+    yf_years = set(df_yf['fy'].unique())
+
+    # Keep SEC EDGAR data ONLY for years NOT in yfinance
+    df_sec_old = df_sec[~df_sec['fy'].isin(yf_years)].copy()
+
+    # Combine: SEC old years + yfinance recent years
+    df_merged = pd.concat([df_sec_old, df_yf], ignore_index=True)
+    df_merged = df_merged.sort_values('fy').reset_index(drop=True)
+
+    print(
+        f"  Merged: {len(df_sec_old)} years from SEC EDGAR + {len(df_yf)} years from yfinance = {len(df_merged)} total")
+
+    return df_merged
 
 # Leggi la lista dei ticker dal file
 def load_tickers(filename='tickers.txt'):
@@ -47,16 +170,34 @@ def get_company_facts(cik):
 
 
 def extract_fcf_data(company_data):
-    """Estrae i dati di Free Cash Flow dai dati XBRL"""
+    """Estrae i dati di Free Cash Flow e componenti WACC dai dati XBRL"""
     fcf_data = []
 
-    # Tag XBRL comuni per componenti del FCF
+    # Tag XBRL comuni per componenti del FCFF e WACC
     fcf_tags = {
+        # Per FCFF
         'NetCashProvidedByUsedInOperatingActivities': 'Operating Cash Flow',
         'PaymentsToAcquirePropertyPlantAndEquipment': 'CapEx',
         'NetCashProvidedByUsedInOperatingActivitiesContinuingOperations': 'Operating Cash Flow (Continuing)',
         'PaymentsForCapitalImprovements': 'Capital Improvements',
-        'PaymentsToAcquireProductiveAssets': 'Productive Assets'
+        'PaymentsToAcquireProductiveAssets': 'Productive Assets',
+
+        # Per calcolo Tax e Interest
+        'InterestExpense': 'Interest Expense',
+        'InterestAndDebtExpense': 'Interest And Debt Expense',
+        'IncomeTaxExpenseBenefit': 'Income Tax Expense',
+        'IncomeTaxesPaid': 'Income Taxes Paid',
+        'OperatingIncomeLoss': 'EBIT',
+
+        # Per WACC components
+        'LongTermDebt': 'Long-Term Debt',
+        'ShortTermBorrowings': 'Short-Term Debt',
+        'DebtCurrent': 'Current Debt',
+        'StockholdersEquity': 'Shareholders Equity',
+        'CashAndCashEquivalentsAtCarryingValue': 'Cash',
+
+        # Depreciation (per info)
+        'DepreciationDepletionAndAmortization': 'D&A',
     }
 
     facts = company_data.get('facts', {})
@@ -88,7 +229,10 @@ def extract_fcf_data(company_data):
 
 
 def calculate_fcf(df, form_type):
-    """Calcola il Free Cash Flow dai componenti per uno specifico tipo di form"""
+    """
+    Calcola il Free Cash Flow to Firm dai componenti per uno specifico tipo di form
+    FCFF = Operating Cash Flow + Interest × (1-T) - CapEx
+    """
     if df.empty:
         return pd.DataFrame()
 
@@ -106,15 +250,87 @@ def calculate_fcf(df, form_type):
         aggfunc='first'
     ).reset_index()
 
-    # Sostituisci NaN in CapEx con 0
+    # ===== Gestione Operating Cash Flow =====
+    if 'Operating Cash Flow' in pivot_df.columns:
+        pivot_df['Operating Cash Flow'] = pivot_df['Operating Cash Flow']
+    elif 'Operating Cash Flow (Continuing)' in pivot_df.columns:
+        pivot_df['Operating Cash Flow'] = pivot_df['Operating Cash Flow (Continuing)']
+    else:
+        # Nessun Operating Cash Flow disponibile
+        return pd.DataFrame()
+
+    # ===== Gestione CapEx =====
     if 'CapEx' in pivot_df.columns:
         pivot_df['CapEx'] = pivot_df['CapEx'].fillna(0)
+    else:
+        pivot_df['CapEx'] = 0
 
-    # Calcola FCF (Operating Cash Flow - CapEx)
-    if 'Operating Cash Flow' in pivot_df.columns:
-        pivot_df['Free Cash Flow'] = pivot_df['Operating Cash Flow'] - abs(pivot_df['CapEx'])
-    elif 'Operating Cash Flow (Continuing)' in pivot_df.columns:
-        pivot_df['Free Cash Flow'] = pivot_df['Operating Cash Flow (Continuing)'] - abs(pivot_df['CapEx'])
+    # ===== Gestione Interest Expense =====
+    if 'Interest Expense' in pivot_df.columns:
+        pivot_df['Interest Expense'] = pivot_df['Interest Expense'].fillna(0)
+    elif 'Interest And Debt Expense' in pivot_df.columns:
+        pivot_df['Interest Expense'] = pivot_df['Interest And Debt Expense'].fillna(0)
+    else:
+        pivot_df['Interest Expense'] = 0
+
+    # ===== Gestione Tax Rate =====
+    # Calcola Tax Rate da Income Tax Expense / EBIT
+    if 'Income Tax Expense' in pivot_df.columns and 'EBIT' in pivot_df.columns:
+        pivot_df['Tax Rate'] = pivot_df['Income Tax Expense'] / pivot_df['EBIT']
+        # Clippa a range ragionevole [0, 0.5]
+        pivot_df['Tax Rate'] = pivot_df['Tax Rate'].clip(0, 0.5).fillna(0.21)
+    else:
+        pivot_df['Tax Rate'] = 0.21  # Default US corporate tax rate
+
+    # ===== Calcola FCFF =====
+    # FCFF = Operating Cash Flow + Interest × (1-T) - CapEx
+    pivot_df['Free Cash Flow'] = (
+            pivot_df['Operating Cash Flow'] +
+            pivot_df['Interest Expense'] * (1 - pivot_df['Tax Rate']) -
+            abs(pivot_df['CapEx'])
+    )
+
+    # ===== Componenti WACC =====
+
+    # Total Debt - usa check esplicito per evitare .fillna() su int
+    lt_debt = 0
+    if 'Long-Term Debt' in pivot_df.columns:
+        lt_debt = pivot_df['Long-Term Debt'].fillna(0)
+
+    st_debt = 0
+    if 'Short-Term Debt' in pivot_df.columns:
+        st_debt = pivot_df['Short-Term Debt'].fillna(0)
+    elif 'Current Debt' in pivot_df.columns:
+        st_debt = pivot_df['Current Debt'].fillna(0)
+
+    pivot_df['Total Debt'] = lt_debt + st_debt
+
+    # Equity
+    if 'Shareholders Equity' in pivot_df.columns:
+        pivot_df['Equity'] = pivot_df['Shareholders Equity'].fillna(0)
+    else:
+        pivot_df['Equity'] = 0
+
+    # Cash
+    if 'Cash' in pivot_df.columns:
+        pivot_df['Cash'] = pivot_df['Cash'].fillna(0)
+    else:
+        pivot_df['Cash'] = 0
+
+    # Net Debt
+    pivot_df['Net Debt'] = pivot_df['Total Debt'] - pivot_df['Cash']
+
+    # Cost of Debt (Kd) = Interest Expense / Total Debt
+    pivot_df['Kd'] = pivot_df.apply(
+        lambda row: row['Interest Expense'] / row['Total Debt'] if row['Total Debt'] > 0 else 0,
+        axis=1
+    )
+
+    # D/E ratio
+    pivot_df['D/E'] = pivot_df.apply(
+        lambda row: row['Total Debt'] / row['Equity'] if row['Equity'] > 0 else 0,
+        axis=1
+    )
 
     # Ordina per data
     pivot_df['end'] = pd.to_datetime(pivot_df['end'])
@@ -146,8 +362,14 @@ for i, company in enumerate(COMPANIES, 1):
     if i > 1:
         time.sleep(0.11)  # Pausa di 110ms tra le richieste
 
-    # Recupera i dati
+    # ===== STEP 1: PROVA YFINANCE PRIMA =====
+    df_yf_annual = load_fcff_from_yfinance(TICKER)
+
+    # ===== STEP 2: RECUPERA DATI DA SEC EDGAR =====
     company_data = get_company_facts(CIK)
+
+    df_sec_10q = pd.DataFrame()
+    df_sec_10k = pd.DataFrame()
 
     if company_data:
         print(f"✓ Dati recuperati con successo")
@@ -159,77 +381,44 @@ for i, company in enumerate(COMPANIES, 1):
         if not fcf_df.empty:
             print(f"✓ Trovati {len(fcf_df)} record di dati finanziari")
 
-            # Calcola FCF per 10-Q (trimestrali)
-            fcf_10q = calculate_fcf(fcf_df, '10-Q')
+            # Calcola FCF per 10-Q (trimestrali) - SEMPRE DA SEC EDGAR
+            df_sec_10q = calculate_fcf(fcf_df, '10-Q')
 
-            # Calcola FCF per 10-K (annuali)
-            fcf_10k = calculate_fcf(fcf_df, '10-K')
-
-            # Processa dati 10-Q
-            if not fcf_10q.empty and 'Free Cash Flow' in fcf_10q.columns:
-                print(f"✓ FCF 10-Q calcolato con successo ({len(fcf_10q)} periodi)")
-
-                # Aggiungi ticker alla tabella
-                fcf_10q['ticker'] = TICKER
-                fcf_10q['company_name'] = company_data.get('entityName', 'N/A')
-
-                all_company_data_10q.append(fcf_10q)
-
-                # Esporta in CSV individuale nella cartella data
-                output_file = f"data/{TICKER}_fcf_10Q.csv"
-                fcf_10q.to_csv(output_file, index=False)
-                print(f"✓ Dati 10-Q esportati in: {output_file}")
-            else:
-                print("⚠ Nessun dato 10-Q disponibile")
-
-            # Processa dati 10-K
-            if not fcf_10k.empty and 'Free Cash Flow' in fcf_10k.columns:
-                print(f"✓ FCF 10-K calcolato con successo ({len(fcf_10k)} periodi)")
-
-                # Aggiungi ticker alla tabella
-                fcf_10k['ticker'] = TICKER
-                fcf_10k['company_name'] = company_data.get('entityName', 'N/A')
-
-                all_company_data_10k.append(fcf_10k)
-
-                # Esporta in CSV individuale nella cartella data
-                output_file = f"data/{TICKER}_fcf_10K.csv"
-                fcf_10k.to_csv(output_file, index=False)
-                print(f"✓ Dati 10-K esportati in: {output_file}")
-            else:
-                print("⚠ Nessun dato 10-K disponibile")
-
-            # Mostra gli ultimi 5 periodi combinati
-            if (not fcf_10q.empty and 'Free Cash Flow' in fcf_10q.columns) or \
-                    (not fcf_10k.empty and 'Free Cash Flow' in fcf_10k.columns):
-                print("\nUltimi 5 periodi (10-Q e 10-K combinati):")
-
-                combined_display = []
-                if not fcf_10q.empty and 'Free Cash Flow' in fcf_10q.columns:
-                    combined_display.append(
-                        fcf_10q[['end', 'form', 'fy', 'fp', 'Operating Cash Flow', 'CapEx', 'Free Cash Flow']])
-                if not fcf_10k.empty and 'Free Cash Flow' in fcf_10k.columns:
-                    combined_display.append(
-                        fcf_10k[['end', 'form', 'fy', 'fp', 'Operating Cash Flow', 'CapEx', 'Free Cash Flow']])
-
-                if combined_display:
-                    display_df = pd.concat(combined_display).sort_values('end').tail(5).copy()
-
-                    # Formatta i valori in milioni
-                    for col in ['Operating Cash Flow', 'CapEx', 'Free Cash Flow']:
-                        if col in display_df.columns:
-                            display_df[col] = display_df[col] / 1_000_000
-
-                    display_df.columns = ['Data', 'Form', 'Anno Fiscale', 'Periodo', 'Op. CF ($M)', 'CapEx ($M)',
-                                          'FCF ($M)']
-
-                    pd.set_option('display.float_format', '{:,.0f}'.format)
-                    print(display_df.to_string(index=False))
-
+            # Calcola FCF per 10-K (annuali) - DA SEC EDGAR
+            df_sec_10k = calculate_fcf(fcf_df, '10-K')
         else:
             print("⚠ Nessun dato FCF trovato")
     else:
-        print("✗ Errore nel recupero dei dati")
+        print("⚠ Errore nel recupero dei dati SEC EDGAR")
+
+    # ===== STEP 3: MERGE ANNUAL DATA (yfinance + SEC EDGAR) =====
+    df_annual_final = merge_yfinance_and_sec_data(df_yf_annual, df_sec_10k)
+
+    # ===== STEP 4: QUARTERLY SEMPRE DA SEC EDGAR (yfinance non li ha) =====
+    df_quarterly_final = df_sec_10q
+
+    # ===== STEP 5: SALVA CSV =====
+    # Processa dati 10-Q
+    if not df_quarterly_final.empty and 'Free Cash Flow' in df_quarterly_final.columns:
+        print(f"✓ FCF 10-Q: {len(df_quarterly_final)} periodi")
+        df_quarterly_final['ticker'] = TICKER
+        df_quarterly_final['company_name'] = company_data.get('entityName', 'N/A') if company_data else TICKER
+        output_file = f"data/{TICKER}_fcf_10Q.csv"
+        df_quarterly_final.to_csv(output_file, index=False)
+        print(f"✓ Dati 10-Q esportati in: {output_file}")
+    else:
+        print("⚠ Nessun dato 10-Q disponibile")
+
+    # Processa dati 10-K
+    if not df_annual_final.empty and 'Free Cash Flow' in df_annual_final.columns:
+        print(f"✓ FCF 10-K: {len(df_annual_final)} periodi (FY {df_annual_final['fy'].min()}-{df_annual_final['fy'].max()})")
+        df_annual_final['ticker'] = TICKER
+        df_annual_final['company_name'] = company_data.get('entityName', 'N/A') if company_data else TICKER
+        output_file = f"data/{TICKER}_fcf_10K.csv"
+        df_annual_final.to_csv(output_file, index=False)
+        print(f"✓ Dati 10-K esportati in: {output_file}")
+    else:
+        print("⚠ Nessun dato 10-K disponibile")
 
 # Consolidamento finale
 print("\n" + "=" * 80)
@@ -270,6 +459,8 @@ else:
     print("⚠ Nessun dato è stato recuperato con successo")
 
 print("\n" + "=" * 80)
-print("NOTA: I valori di CapEx sono mostrati come positivi per chiarezza,")
-print("ma rappresentano uscite di cassa nel calcolo del FCF.")
+print("FORMULA: FCFF = Operating Cash Flow + Interest × (1-T) - CapEx")
+print("Both 10-K (annual) and 10-Q (quarterly) extracted")
+print("Additional WACC components included: Total Debt, Equity, Kd, D/E")
 print("\nIMPORTANTE: Ricorda di modificare l'User-Agent nell'header con i tuoi dati!")
+print("=" * 80)

@@ -1,124 +1,290 @@
-# forecastly
+# 📊 FCF Forecasting System
 
-Financial forecasting tools for SEC EDGAR data analysis and Free Cash Flow prediction.
+Unified Free Cash Flow forecasting system using Nixtla's StatsForecast and MLForecast libraries.
 
-## Installation
+## 🎯 What This Does
 
-### Mac M1/M2/M3 (Apple Silicon)
+Forecasts **annual Free Cash Flow (FCF)** for stocks using:
+- Historical 10-K (annual) and 10-Q (quarterly) data from SEC EDGAR filings
+- Multiple forecasting models (statistical, ML, and deep learning)
+- Quarterly data as exogenous variables (optional)
 
-**Important**: Use native ARM64 Python to avoid OpenMP conflicts and segmentation faults.
+**Target**: Predict next 4 years of FCF to enhance DCF valuation models.
 
-1. **Remove old Miniconda/Anaconda** (if installed under Rosetta):
-```bash
-rm -rf /usr/local/Caskroom/miniconda
-rm -rf ~/miniconda3
-rm -rf ~/miniforge3  # if exists
+---
+
+## 📁 Project Structure
+
+```
+project/
+├── config.py                    # Centralized configuration
+├── model.py                     # Model factory (StatsForecast, MLForecast, Chronos)
+├── train_predict.py             # Unified training script
+├── fcf_extractor.py             # Download FCF data from SEC EDGAR
+├── 1_exploration_analysis.py    # Plot historical data
+├── 2_model_comparison_analysis.ipynb  # Compare all models (Jupyter)
+├── tickers.txt                  # List of CIK,TICKER pairs
+├── data/
+│   ├── {TICKER}_fcf_10Q.csv    # Quarterly FCF data
+│   └── {TICKER}_fcf_10K.csv    # Annual FCF data
+└── result/
+    ├── {TICKER}_fcf_annual_predictions_{MODEL}.csv
+    └── {TICKER}_fcf_10K_with_models.png
 ```
 
-2. **Install Miniforge ARM64**:
+---
+
+## 📝 Usage
+
+### Basic Commands
+
 ```bash
-curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh"
-bash Miniforge3-MacOSX-arm64.sh
-rm Miniforge3-MacOSX-arm64.sh  # cleanup installer
+# 1. Download FCF data from SEC
+python fcf_extractor.py
+
+# 2. Train a single model for one ticker
+python train_predict.py AAPL autoarima
+
+# 3. Train all models for one ticker
+python train_predict.py NVDA
+
+# 4. Compare all models (Jupyter notebook)
+jupyter notebook model_comparison_analysis.ipynb
 ```
 
-Close and reopen your terminal.
+### Available Models
 
-3. **Create environment**:
-```bash
-# Verify ARM64
-python -c "import platform; print(platform.machine())"  # Must print: arm64
+| Model | Type | Description |
+|-------|------|-------------|
+| `autoarima` | Statistical | Auto-tuned ARIMA |
+| `arima` | Statistical | Fixed ARIMA(1,0,1) |
+| `exponential_smoothing` | Statistical | AutoETS |
+| `moving_average` | Statistical | Window Average (3 years) |
+| `lightgbm` | ML | Gradient Boosting with lags |
+| `chronos2` | DL | Pretrained Transformer |
 
-# Create environment with Python 3.12
-conda create -n forecasting python=3.12 -y
-conda activate forecasting
+---
 
-# Install dependencies in correct order (avoids OpenMP conflicts)
-conda install -c conda-forge "numpy<2.0" lightgbm -y
-conda install -c conda-forge pandas scikit-learn matplotlib requests -y
-pip install darts
-pip install polars-lts-cpu  # optional, for better CPU compatibility
+## ⚙️ Configuration
+
+All settings are in `config.py`. Key parameters:
+
+### Data & Train/Test Split
+```python
+DATA_DIR = "data"
+RESULT_DIR = "result"
+TEST_YEARS = 4  # Last 4 years for testing
+MIN_TRAIN_YEARS = 3  # Minimum training years required
 ```
 
-### Mac Intel
-
-**Note**: Intel Macs may also experience OpenMP conflicts. Follow similar steps to Apple Silicon:
-
-1. **Install Miniconda or Miniforge**:
-```bash
-# For Intel Mac, use standard Miniconda
-curl -L -O "https://repo.anaconda.com/miniconda/Miniconda3-latest-MacOSX-x86_64.sh"
-bash Miniconda3-latest-MacOSX-x86_64.sh
-rm Miniconda3-latest-MacOSX-x86_64.sh
+### Model Selection
+```python
+MODELS = {
+    "autoarima": "statsforecast",
+    "arima": "statsforecast",
+    "exponential_smoothing": "statsforecast",
+    "moving_average": "statsforecast",
+    "lightgbm": "mlforecast",
+    "chronos2": "chronos",
+}
 ```
 
-Close and reopen your terminal.
-
-2. **Create environment**:
-```bash
-conda create -n forecasting python=3.12 -y
-conda activate forecasting
-
-# Install dependencies in correct order (avoids OpenMP conflicts)
-conda install -c conda-forge "numpy<2.0" lightgbm -y
-conda install -c conda-forge pandas scikit-learn matplotlib requests -y
-pip install darts
+### Quarterly Covariates
+```python
+USE_QUARTERLY_COVARIATES = True  # Use Q1-Q4 as features
+QUARTERLY_LAG = -1  # Use previous year's quarters
 ```
 
-### Windows / Linux
+### Model-Specific Settings
+
+**AutoARIMA:**
+```python
+AUTOARIMA_CONFIG = {
+    "seasonal": False,
+    "max_p": 3,  # Max AR terms
+    "max_q": 3,  # Max MA terms
+    "max_d": 2,  # Max differencing
+}
+```
+
+**LightGBM:**
+```python
+LIGHTGBM_CONFIG = {
+    "n_estimators": 100,
+    "learning_rate": 0.1,
+    "max_depth": 5,
+    "lags": [1, 2, 3],  # Use last 3 years
+}
+```
+
+See `config.py` for complete settings.
+
+---
+
+## 🔧 Common Tasks
+
+### Add a New Ticker
+
+Edit `tickers.txt`:
+```
+0000789019,MSFT
+0001318605,TSLA
+0001652044,GOOG
+YOUR_CIK,YOUR_TICKER  # Add here
+```
+
+Then run:
+```bash
+python fcf_extractor.py
+python train_predict.py YOUR_TICKER
+```
+
+### Change Test Period
+
+In `config.py`:
+```python
+TEST_YEARS = 3  # Was 4 - use 3 years for testing
+```
+
+### Disable Quarterly Covariates
+
+In `config.py`:
+```python
+USE_QUARTERLY_COVARIATES = False
+```
+
+### Tune AutoARIMA
+
+In `config.py`:
+```python
+AUTOARIMA_CONFIG = {
+    "max_p": 5,  # Was 3 - search more AR terms
+    "max_q": 5,  # Was 3 - search more MA terms
+}
+```
+
+### Increase LightGBM Complexity
+
+In `config.py`:
+```python
+LIGHTGBM_CONFIG = {
+    "n_estimators": 500,  # Was 100
+    "max_depth": 8,      # Was 5
+    "lags": [1, 2, 3, 4, 5],  # Was [1, 2, 3]
+}
+```
+
+---
+
+## 🐛 Troubleshooting
+
+### ModuleNotFoundError: No module named 'statsforecast'
+```bash
+conda install -c conda-forge statsforecast mlforecast lightgbm
+```
+
+### Chronos model download fails
+Chronos downloads ~1GB on first run. Ensure stable internet or use smaller model:
+```python
+# In config.py
+CHRONOS_CONFIG["model_name"] = "amazon/chronos-t5-small"  # ~200MB
+```
+
+---
+
+## 📝 File Formats
+
+### tickers.txt
+```
+# Format: CIK,TICKER
+0000789019,MSFT
+0001318605,TSLA
+0001652044,GOOG
+```
+
+### Output CSV (predictions)
+```csv
+fy,actual,predicted
+2022,98765432100,95432109876
+2023,102345678900,99876543210
+2024,106789012345,103456789012
+2025,110123456789,107890123456
+```
+
+---
+
+## 🎓 Key Concepts
+
+### Why Use Quarterly Data as Covariates?
+
+Annual FCF = sum of quarterly cash flows. Using Q1-Q4 from previous year as features helps models capture:
+- Seasonality patterns
+- Quarterly momentum
+- Business cycle effects
+
+**Example**: When predicting FY2024, we use Q1-Q4 from FY2023 as inputs.
+
+### Why Multiple Models?
+
+Different models excel at different patterns:
+- **ARIMA**: Stable trends, autocorrelation
+- **ETS**: Smooth exponential trends
+- **LightGBM**: Complex non-linear patterns
+- **Chronos**: Transfer learning from many series
+
+**Ensemble** (combining models) often outperforms individual models.
+
+---
+
+## 🚀 Quick Start Checklist
+
+- [ ] Create `tickers.txt` with your stocks
+- [ ] Download data: `python fcf_extractor.py`
+- [ ] Test one model: `python train_predict.py AAPL autoarima`
+- [ ] Run comparison: Open `model_comparison_analysis.ipynb`
+- [ ] Review results in `result/` folder
+
+---
+
+## 🤝 Contributing
+
+Contributions welcome! When adding features:
+1. Update `config.py` for new parameters
+2. Add model to `model.py` factory
+
+---
+
+## 🚀 Installation
+
+### Mac (Apple Silicon M1/M2/M3 or Intel)
 
 ```bash
+# Install Miniforge for Apple Silicon
+# Download from: https://github.com/conda-forge/miniforge/releases/latest
+# File: Miniforge3-MacOSX-arm64.sh (Apple Silicon) or Miniforge3-MacOSX-x86_64.sh (Intel)
+
 # Create environment
-conda create -n forecasting python=3.12 -y
-conda activate forecasting
+conda create -n fcf python=3.10
+conda activate fcf
 
 # Install dependencies
+conda install -c conda-forge --file requirements.txt
+```
+
+### Linux / Windows
+
+```bash
+# Using conda
+conda create -n fcf python=3.10
+conda activate fcf
+conda install -c conda-forge --file requirements.txt
+
+# OR using venv + pip
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-## Usage
+---
 
-### 1. Extract FCF Data from SEC EDGAR
-
-```bash
-python fetch_fcf_data.py
-```
-
-This will read tickers from `tickers.txt` and save data to `/data` folder.
-
-### 2. Analyze FCF Time Series
-
-Run the Jupyter notebook:
-```bash
-jupyter notebook fcf_analysis.ipynb
-```
-
-Plots are saved to `/result` folder.
-
-### 3. Train FCF Forecasting Model
-
-```bash
-python train_predict/train_predict_lightgbm.py AAPL
-```
-
-Predicts annual FCF using quarterly data as covariates.
-
-## Project Structure
-
-```
-forecastly/
-├── data/                      # FCF datasets (10-Q and 10-K)
-├── result/                    # Prediction outputs and plots
-├── train_predict/             # Forecasting models
-│   └── train_predict_lightgbm.py  # LightGBM forecasting model
-├── fetch_fcf_data.py          # SEC EDGAR data extraction
-├── fcf_analysis.ipynb         # Time series visualization
-├── tickers.txt                # List of stock tickers to process
-└── requirements.txt           # Python dependencies
-```
-
-## Notes
-
-- **Apple Silicon users**: Always use conda-forge channel to avoid OpenMP conflicts
-- **NumPy version**: Darts requires NumPy < 2.0
-- **Polars**: Use `polars-lts-cpu` on Apple Silicon for better compatibility
+**Happy Forecasting! 🚀**

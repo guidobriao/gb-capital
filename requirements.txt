@@ -1,8 +1,26 @@
-numpy<2.0
+# Core data processing
+numpy<2.0.0
 pandas
-matplotlib
-requests
-scikit-learn
+
+# Nixtla forecasting
+statsforecast
+mlforecast
 lightgbm
-darts
-polars-lts-cpu
+
+# Chronos (Amazon deep learning model)
+chronos-forecasting
+torch
+
+# Visualization
+matplotlib
+seaborn
+
+# Configuration
+pydantic
+pydantic-settings
+
+# Data extraction
+requests
+
+# Environment variables
+python-dotenv
