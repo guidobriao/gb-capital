@@ -18,13 +18,15 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def load_fcf_data(ticker: str, data_dir: Path) -> tuple:
+def load_fcf_data(name: str, data_dir: Path) -> tuple:
     """
-    Load annual and quarterly FCF data from CSV (già processati da fcf_extractor.py)
+    Load annual and quarterly FCF data from CSV (already processed by fcf_extractor.py)
+    Args:
+        name: Company name (not ticker)
     """
 
     # Load quarterly data (optional)
-    quarterly_file = data_dir / f"{ticker}_fcf_10Q.csv"
+    quarterly_file = data_dir / f"{name}_fcf_10Q.csv"
     if quarterly_file.exists():
         df_q = pd.read_csv(quarterly_file)
         df_q['end'] = pd.to_datetime(df_q['end'])
@@ -33,7 +35,7 @@ def load_fcf_data(ticker: str, data_dir: Path) -> tuple:
         df_q = pd.DataFrame()
 
     # Load annual data (required)
-    annual_file = data_dir / f"{ticker}_fcf_10K.csv"
+    annual_file = data_dir / f"{name}_fcf_10K.csv"
     if not annual_file.exists():
         raise FileNotFoundError(f"Annual file not found: {annual_file}")
 
@@ -223,10 +225,10 @@ def calculate_metrics(actual: np.ndarray, predicted: np.ndarray) -> dict:
     }
 
 
-def save_predictions(ticker: str, model_name: str, test_fys: np.ndarray,
+def save_predictions(name: str, model_name: str, test_fys: np.ndarray,
                     actual: np.ndarray, predicted: np.ndarray, 
                     result_dir: Path) -> Path:
-    """Save predictions to CSV."""
+    """Save predictions to CSV using company name."""
     result_dir.mkdir(parents=True, exist_ok=True)
     
     output_df = pd.DataFrame({
@@ -235,13 +237,13 @@ def save_predictions(ticker: str, model_name: str, test_fys: np.ndarray,
         'predicted': predicted,
     })
     
-    filename = result_dir / f"{ticker}_fcf_annual_predictions_{model_name}.csv"
+    filename = result_dir / f"{name}_fcf_annual_predictions_{model_name}.csv"
     output_df.to_csv(filename, index=False)
     
     return filename
 
 
-def train_and_predict(model_name: str, ticker: str, 
+def train_and_predict(model_name: str, name: str, 
                      test_years: int = 4,
                      data_dir: Path = None,
                      result_dir: Path = None,
@@ -249,161 +251,168 @@ def train_and_predict(model_name: str, ticker: str,
                      min_train_years: int = 3) -> tuple:
     """
     Main training and prediction function for ARIMA models.
+    Args:
+        name: Company name (not ticker)
     """
-    from .config import settings
-    from .model import build_model
-    
+    from src.config import settings
+    from src.model import build_model
+
     if data_dir is None:
         data_dir = settings.DATA_DIR
     if result_dir is None:
         result_dir = settings.RESULT_DIR
-    
-    logger.info(f"Training {model_name.upper()} for {ticker}")
-    
+
+    logger.info(f"Training {model_name.upper()} for {name}")
+
     try:
-        # Load data (only once per ticker)
-        if not hasattr(train_and_predict, 'data_cache') or train_and_predict.data_cache.get('ticker') != ticker:
-            logger.info(f"Loading data for {ticker}...")
-            df_quarterly, df_annual = load_fcf_data(ticker, data_dir)
-            
+        # Load data (only once per company)
+        if not hasattr(train_and_predict, 'data_cache') or train_and_predict.data_cache.get('name') != name:
+            logger.info(f"Loading data for {name}...")
+            df_quarterly, df_annual = load_fcf_data(name, data_dir)
+
             # Prepare covariates
             annual_fys = df_annual['fy'].values
             cov_df = prepare_quarterly_covariates(df_quarterly, annual_fys, lag=covariate_lag)
-            
+
             # Split data
             data_split = split_data(df_annual, cov_df, min_train_years, test_years)
-            
+
             # Cache for reuse
             train_and_predict.data_cache = {
-                'ticker': ticker,
+                'name': name,
                 'data_split': data_split
             }
         else:
-            logger.info(f"Using cached data for {ticker}")
+            logger.info(f"Using cached data for {name}")
             data_split = train_and_predict.data_cache['data_split']
-        
+
         # Build model
         model_obj = build_model(model_name)
-        
+
         # Train
         logger.info(f"Training {model_name.upper()}...")
         predictions = train_statsforecast(model_obj, data_split)
-        
+
         # Calculate metrics
         actual = data_split['test_y']
         metrics = calculate_metrics(actual, predictions)
-        
+
         logger.info(f"  MAE: {metrics['MAE']/1e9:.2f}B | MAPE: {metrics['MAPE']:.1f}%")
-        
+
         # Save predictions
         output_path = save_predictions(
-            ticker, model_name, 
-            data_split['test_fys'], 
+            name, model_name,
+            data_split['test_fys'],
             actual, predictions,
             result_dir
         )
-        
+
         return predictions, metrics
-        
+
     except Exception as e:
-        logger.error(f"Error training {model_name} for {ticker}: {str(e)}")
+        logger.error(f"Error training {model_name} for {name}: {str(e)}")
         raise
 
 
-def create_ensemble(ticker: str, ensemble_name: str, model_names: list,
+def create_ensemble(name: str, ensemble_name: str, model_names: list,
                    result_dir: Path = None) -> dict:
     """
     Create ensemble as average of multiple models.
     Reads predictions from CSV files and averages them.
+    Args:
+        name: Company name (not ticker)
     """
-    from .config import settings
-    
+    from src.config import settings
+
     if result_dir is None:
         result_dir = settings.RESULT_DIR
-    
+
     logger.info(f"Creating ensemble {ensemble_name.upper()} from {model_names}")
-    
+
     try:
         # Load predictions from each model
         all_predictions = []
         test_fys = None
         actual = None
-        
+
         for model_name in model_names:
-            pred_file = result_dir / f"{ticker}_fcf_annual_predictions_{model_name}.csv"
-            
+            pred_file = result_dir / f"{name}_fcf_annual_predictions_{model_name}.csv"
+
             if not pred_file.exists():
                 raise FileNotFoundError(f"Predictions not found for {model_name}: {pred_file}")
-            
+
             df_pred = pd.read_csv(pred_file)
-            
+
             if test_fys is None:
                 test_fys = df_pred['fy'].values
                 actual = df_pred['actual'].values
-            
+
             all_predictions.append(df_pred['predicted'].values)
-        
+
         # Average predictions
         ensemble_predictions = np.mean(all_predictions, axis=0)
-        
+
         # Calculate metrics
         metrics = calculate_metrics(actual, ensemble_predictions)
-        
+
         logger.info(f"  Ensemble MAE: {metrics['MAE']/1e9:.2f}B | MAPE: {metrics['MAPE']:.1f}%")
-        
+
         # Save ensemble predictions
         output_path = save_predictions(
-            ticker, ensemble_name,
+            name, ensemble_name,
             test_fys, actual, ensemble_predictions,
             result_dir
         )
-        
+
         return {'predictions': ensemble_predictions, 'metrics': metrics}
-        
+
     except Exception as e:
-        logger.error(f"Error creating ensemble {ensemble_name} for {ticker}: {str(e)}")
+        logger.error(f"Error creating ensemble {ensemble_name} for {name}: {str(e)}")
         raise
 
 
-def train_all_models_for_ticker(ticker: str,
-                                test_years: int = 4,
-                                data_dir: Path = None,
-                                result_dir: Path = None) -> dict:
+def train_all_models_for_company(name: str,
+                                  test_years: int = 4,
+                                  data_dir: Path = None,
+                                  result_dir: Path = None) -> dict:
     """
-    Complete workflow for one ticker:
+    Complete workflow for one company:
     1. Fit 4 ARIMA models
     2. Create 4 ensemble averages
-    
+
+    Args:
+        name: Company name (not ticker)
+
     Returns: dict with all results
     """
-    from .config import settings
-    
+    from src.config import settings
+
     if data_dir is None:
         data_dir = settings.DATA_DIR
     if result_dir is None:
         result_dir = settings.RESULT_DIR
-    
+
     logger.info("\n" + "="*80)
-    logger.info(f"TRAINING ALL MODELS FOR {ticker}")
+    logger.info(f"TRAINING ALL MODELS FOR {name}")
     logger.info("="*80 + "\n")
-    
+
     results = {}
-    
-    # Clear cache for new ticker
+
+    # Clear cache for new company
     if hasattr(train_and_predict, 'data_cache'):
         delattr(train_and_predict, 'data_cache')
-    
+
     try:
         # STEP 1: Fit 4 ARIMA models
         logger.info("STEP 1: Training 4 ARIMA models...")
-        
+
         arima_models = list(settings.MODELS.keys())
-        
+
         for model_name in arima_models:
             try:
                 logger.info(f"\n  ▶ Training {model_name.upper()}...")
                 predictions, metrics = train_and_predict(
-                    model_name, ticker,
+                    model_name, name,
                     test_years=test_years,
                     data_dir=data_dir,
                     result_dir=result_dir,
@@ -413,41 +422,44 @@ def train_all_models_for_ticker(ticker: str,
             except Exception as e:
                 logger.error(f"    ✗ {model_name.upper()} failed: {str(e)}")
                 results[model_name] = {'error': str(e)}
-        
+
         # STEP 2: Create ensembles
         logger.info("\n\nSTEP 2: Creating ensemble models...")
-        
+
         for ensemble_name, model_list in settings.ENSEMBLES.items():
             try:
                 logger.info(f"\n  ▶ Creating {ensemble_name.upper()}...")
                 ensemble_result = create_ensemble(
-                    ticker, ensemble_name, model_list, result_dir
+                    name, ensemble_name, model_list, result_dir
                 )
                 results[ensemble_name] = ensemble_result
                 logger.info(f"    ✓ {ensemble_name.upper()} completed")
             except Exception as e:
                 logger.error(f"    ✗ {ensemble_name.upper()} failed: {str(e)}")
                 results[ensemble_name] = {'error': str(e)}
-        
-        logger.info(f"\n✓ Completed all models for {ticker}")
+
+        logger.info(f"\n✓ Completed all models for {name}")
         return results
-        
+
     except Exception as e:
-        logger.error(f"Error in workflow for {ticker}: {str(e)}")
+        logger.error(f"Error in workflow for {name}: {str(e)}")
         raise
 
 
 if __name__ == "__main__":
+    from src.config import get_company_name
+
     if len(sys.argv) < 2:
-        print("Usage: python train_predict.py <ticker>")
-        print("Example: python train_predict.py AAPL")
+        print("Usage: python -m src.train_predict <ticker>")
+        print("Example: python -m src.train_predict AAPL")
         sys.exit(1)
-    
+
     ticker = sys.argv[1].upper()
-    
-    results = train_all_models_for_ticker(ticker)
-    
-    print(f"\n✓ Completed all models for {ticker}")
+    name = get_company_name(ticker)
+
+    results = train_all_models_for_company(name)
+
+    print(f"\n✓ Completed all models for {name}")
     print("\nSummary:")
     for model_name, result in results.items():
         if 'error' in result:

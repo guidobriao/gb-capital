@@ -24,17 +24,17 @@ def build_model(model_name: str):
     Factory function to build a model based on name.
     Returns the model object ready for training.
     """
-    from .config import settings
-    
+    from src.config import settings
+
     if model_name not in settings.MODELS:
         raise ValueError(f"Unknown model: {model_name}. Available: {list(settings.MODELS.keys())}")
-    
+
     config = settings.MODELS[model_name]
     model_type = config['type']
     params = config.get('params', {})
-    
+
     logger.info(f"Building model: {model_name} (type: {model_type})")
-    
+
     if model_type == 'statsforecast':
         return build_statsforecast_model(model_name, params)
     else:
