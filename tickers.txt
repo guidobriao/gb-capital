@@ -1,25 +1,126 @@
 # Lista ticker
-# Formato: CIK, TICKER
-0001730168, AVGO
-0001018724, AMZN
-0001318605, TSLA
-0000789019, MSFT
-0001326801, META
-0000320193, AAPL
-0001652044, GOOG
-0001045810, NVDA
-0000804328, QCOM
-0000002488, AMD
-0001577552, BABA
-0001050446, MSTR
-0000723125, MU
-0001321655, PLTR
-0001375365, SMCI
-0001046179, TSM
-0001293451, TCEHY
-0001445162, BYDDY
-0001736541, NIO
-0000185267, LDO
-0001450345, RHM
-0001697546, EADSY
-0000863345, RYCEY
+# Formato: US;INDUSTRY;NAME;TICKER;CIK
+
+TRUE;Digital Platforms Software & IT Service;Amazon;AMZN;0001018724
+TRUE;Digital Platforms Software & IT Service;Microsoft;MSFT;0000789019
+TRUE;Digital Platforms Software & IT Service;Alphabet;GOOGL;0001652044
+TRUE;Digital Platforms Software & IT Service;Meta Platforms;META;0001326801
+TRUE;Digital Platforms Software & IT Service;Apple;AAPL;0000320193
+TRUE;Digital Platforms Software & IT Service;MicroStrategy;MSTR;0001050446
+TRUE;Digital Platforms Software & IT Service;Super Micro Computer;SMCI;0001375365
+
+FALSE;Digital Platforms Software & IT Service;Alibaba Group;BABA;0001577552
+FALSE;Digital Platforms Software & IT Service;Tencent Holdings;0700.HK;0001293451
+FALSE;Digital Platforms Software & IT Service;JD com;JD;0001549802
+FALSE;Digital Platforms Software & IT Service;PDD Holdings;PDD;0001737806
+FALSE;Digital Platforms Software & IT Service;Baidu;BIDU;0001329099
+FALSE;Digital Platforms Software & IT Service;NetEase;NTES;0001110646
+FALSE;Digital Platforms Software & IT Service;Meituan;3690.HK;
+FALSE;Digital Platforms Software & IT Service;Xiaomi;1810.HK;
+FALSE;Digital Platforms Software & IT Service;Lenovo Group;0992.HK;
+
+TRUE;Aerospace & Defense;Lockheed Martin;LMT;0000936468
+TRUE;Aerospace & Defense;RTX Corporation;RTX;0000101829
+TRUE;Aerospace & Defense;Boeing;BA;0000012927
+TRUE;Aerospace & Defense;General Dynamics;GD;0000040533
+TRUE;Aerospace & Defense;Northrop Grumman;NOC;0001133421
+TRUE;Aerospace & Defense;Huntington Ingalls Industries;HII;0001501585
+TRUE;Aerospace & Defense;L3Harris Technologies;LHX;0002020580
+TRUE;Aerospace & Defense;Leidos;LDOS;0001336920
+TRUE;Aerospace & Defense;Booz Allen Hamilton;BAH;0001443646
+TRUE;Aerospace & Defense;CACI International;CACI;0000016058
+TRUE;Aerospace & Defense;Palantir Technologies;PLTR;0001321655
+TRUE;Aerospace & Defense;AeroVironment;AVAV;0001368622
+TRUE;Aerospace & Defense;Kratos Defense & Security Solutions;KTOS;0001601046
+
+FALSE;Aerospace & Defense;Airbus;AIR.PA;0001697546
+FALSE;Aerospace & Defense;BAE Systems;BA.L;
+FALSE;Aerospace & Defense;Safran;SAF.PA;
+FALSE;Aerospace & Defense;Rolls Royce Holdings;RR.L;0000863345
+FALSE;Aerospace & Defense;Thales;HO.PA;
+FALSE;Aerospace & Defense;Leonardo;LDO.MI;0000185267
+FALSE;Aerospace & Defense;Dassault Aviation;AM.PA;
+FALSE;Aerospace & Defense;Rheinmetall;RHM.DE;0001450345
+FALSE;Aerospace & Defense;Saab;SAAB-B.ST;
+FALSE;Aerospace & Defense;Hanwha Aerospace;012450.KS;
+FALSE;Aerospace & Defense;Fincantieri;FCT.MI;
+FALSE;Aerospace & Defense;Babcock International;BAB.L;
+FALSE;Aerospace & Defense;Hensoldt;HAG.DE;
+FALSE;Aerospace & Defense;Indra;IDR.MC;
+FALSE;Aerospace & Defense;QinetiQ;QQ.L;
+FALSE;Aerospace & Defense;Elbit Systems;ESLT;0001027664
+FALSE;Aerospace & Defense;Kongsberg Gruppen;KOG.OL;
+FALSE;Aerospace & Defense;MTU Aero Engines;MTX.DE;
+
+TRUE;Semiconductors & Tech Hardware;Nvidia;NVDA;0001045810
+TRUE;Semiconductors & Tech Hardware;Advanced Micro Devices;AMD;0000002488
+TRUE;Semiconductors & Tech Hardware;Intel;INTC;0000050863
+TRUE;Semiconductors & Tech Hardware;Qualcomm;QCOM;0000804328
+TRUE;Semiconductors & Tech Hardware;Texas Instruments;TXN;0000097476
+TRUE;Semiconductors & Tech Hardware;Broadcom;AVGO;0001730168
+TRUE;Semiconductors & Tech Hardware;Applied Materials;AMAT;0000006951
+TRUE;Semiconductors & Tech Hardware;Lam Research;LRCX;0000707549
+TRUE;Semiconductors & Tech Hardware;KLA Corporation;KLAC;0000319201
+TRUE;Semiconductors & Tech Hardware;Micron Technology;MU;0000723125
+
+FALSE;Semiconductors & Tech Hardware;TSMC;TSM;0001046179
+FALSE;Semiconductors & Tech Hardware;Samsung Electronics;005930.KS;
+FALSE;Semiconductors & Tech Hardware;SK Hynix;000660.KS;
+FALSE;Semiconductors & Tech Hardware;Infineon Technologies;IFX.DE;
+FALSE;Semiconductors & Tech Hardware;NXP Semiconductors;NXPI;0001413447
+FALSE;Semiconductors & Tech Hardware;STMicroelectronics;STM;0000932787
+FALSE;Semiconductors & Tech Hardware;ASML;ASML;0000937966
+FALSE;Semiconductors & Tech Hardware;Tokyo Electron;8035.T;
+
+TRUE;Energy & Utilities;Constellation Energy;CEG;0001868275
+TRUE;Energy & Utilities;Public Service Enterprise Group;PEG;0000788784
+TRUE;Energy & Utilities;PGE Corp;PCG;0001004980
+TRUE;Energy & Utilities;Duke Energy;DUK;0001326160
+TRUE;Energy & Utilities;Dominion Energy;D;0000715957
+TRUE;Energy & Utilities;Southern Company;SO;0000092122
+TRUE;Energy & Utilities;Exxon Mobil;XOM;0000034088
+TRUE;Energy & Utilities;Chevron;CVX;0000093410
+TRUE;Energy & Utilities;ConocoPhillips;COP;0001163165
+TRUE;Energy & Utilities;Devon Energy;DVN;0001090012
+
+FALSE;Energy & Utilities;EDF;EDF.PA;0000825614
+FALSE;Energy & Utilities;Endesa;ELE.MC;
+FALSE;Energy & Utilities;Cameco;CCJ;0001009001
+FALSE;Energy & Utilities;Kazatomprom;KAP.L;
+
+TRUE;EVs Batteries & Clean Tech;Tesla;TSLA;0001318605
+TRUE;EVs Batteries & Clean Tech;Albemarle;ALB;0000915913
+TRUE;EVs Batteries & Clean Tech;QuantumScape;QS;0001811414
+TRUE;EVs Batteries & Clean Tech;Enphase;ENPH;0001463101
+TRUE;EVs Batteries & Clean Tech;SolarEdge;SEDG;0001419612
+
+FALSE;EVs Batteries & Clean Tech;BYD;1211.HK;0001445162
+FALSE;EVs Batteries & Clean Tech;CATL;300750.SZ;
+FALSE;EVs Batteries & Clean Tech;Panasonic;6752.T;
+FALSE;EVs Batteries & Clean Tech;LG Energy Solution;373220.KS;
+FALSE;EVs Batteries & Clean Tech;SK On;096770.KS;
+FALSE;EVs Batteries & Clean Tech;Umicore;UMI.BR;
+FALSE;EVs Batteries & Clean Tech;NIO;NIO;0001736541
+FALSE;EVs Batteries & Clean Tech;XPeng;XPEV;0001810997
+FALSE;EVs Batteries & Clean Tech;Li Auto;LI;0001791706
+
+TRUE;Metals Mining & Materials;ATI Inc;ATI;0001018963
+TRUE;Metals Mining & Materials;Carpenter Technology;CRS;0000021321
+TRUE;Metals Mining & Materials;Reliance Inc;RS;0000086347
+TRUE;Metals Mining & Materials;Freeport McMoRan;FCX;0000831259
+TRUE;Metals Mining & Materials;Nucor;NUE;0000073309
+TRUE;Metals Mining & Materials;Steel Dynamics;STLD;0001022671
+
+FALSE;Metals Mining & Materials;Voestalpine;VOE.VI;
+FALSE;Metals Mining & Materials;Aperam;APAM.AS;
+FALSE;Metals Mining & Materials;ArcelorMittal;MT;0001243429
+FALSE;Metals Mining & Materials;Rio Tinto;RIO;0000863064
+FALSE;Metals Mining & Materials;Vale;VALE;0000917851
+FALSE;Metals Mining & Materials;BHP Group;BHP;0000811809
+FALSE;Metals Mining & Materials;Glencore;GLEN.L;
+FALSE;Metals Mining & Materials;Anglo American;AAL.L;
+FALSE;Metals Mining & Materials;CMOC Group;603993.SS;
+FALSE;Metals Mining & Materials;First Quantum Minerals;FM.TO;
+FALSE;Metals Mining & Materials;Lundin Mining;LUN.TO;
+FALSE;Metals Mining & Materials;Antofagasta;ANTO.L;
+FALSE;Metals Mining & Materials;Sumitomo Metal Mining;5713.T;

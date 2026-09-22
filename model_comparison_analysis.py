@@ -8,13 +8,12 @@ Uses train_predict.py for model training and evaluation
 
 import logging
 import sys
-from pathlib import Path
 import pandas as pd
 import numpy as np
 
-# Import from src/
-from src.config import settings, load_tickers
-from src.train_predict import train_all_models_for_ticker
+# Import from local modules
+from src.config import settings, load_tickers, get_company_name
+from src.train_predict import train_all_models_for_company
 
 # Setup logging
 logging.basicConfig(
@@ -36,14 +35,14 @@ DEFAULT_MODELS = [
 ]
 
 
-def run_comparison_for_ticker(ticker: str,
-                              models_to_compare: list = None,
-                              test_years: int = 4) -> dict:
+def run_comparison_for_company(name: str,
+                               models_to_compare: list = None,
+                               test_years: int = 4) -> dict:
     """
-    Run model comparison for a single ticker using train/test split.
+    Run model comparison for a single company using train/test split.
 
     Args:
-        ticker: Stock ticker
+        name: Company name (not ticker)
         models_to_compare: List of model names (default: all ARIMA + ensembles)
         test_years: Number of years to use for test set
 
@@ -51,7 +50,7 @@ def run_comparison_for_ticker(ticker: str,
         dict: Results for all models
     """
     logger.info("=" * 80)
-    logger.info(f"MODEL COMPARISON ANALYSIS - {ticker}")
+    logger.info(f"MODEL COMPARISON ANALYSIS - {name}")
     logger.info("=" * 80)
 
     if models_to_compare is None:
@@ -63,8 +62,8 @@ def run_comparison_for_ticker(ticker: str,
 
     try:
         # Use train_predict.py to train all models with train/test split
-        results = train_all_models_for_ticker(
-            ticker=ticker,
+        results = train_all_models_for_company(
+            name=name,
             test_years=test_years,
             data_dir=settings.DATA_DIR,
             result_dir=settings.RESULT_DIR
@@ -73,17 +72,17 @@ def run_comparison_for_ticker(ticker: str,
         return results
 
     except Exception as e:
-        logger.error(f"Error in model comparison for {ticker}: {str(e)}")
+        logger.error(f"Error in model comparison for {name}: {str(e)}")
         return {'error': str(e)}
 
 
-def create_comparison_summary(ticker: str, results: dict) -> pd.DataFrame:
+def create_comparison_summary(name: str, results: dict) -> pd.DataFrame:
     """
     Create summary DataFrame comparing all models.
 
     Args:
-        ticker: Stock ticker
-        results: Results dict from run_comparison_for_ticker
+        name: Company name
+        results: Results dict from run_comparison_for_company
 
     Returns:
         DataFrame with comparison metrics
@@ -94,7 +93,7 @@ def create_comparison_summary(ticker: str, results: dict) -> pd.DataFrame:
     if 'error' in results and len(results) == 1:
         # Complete failure - no models were trained
         summary_data.append({
-            'Ticker': ticker,
+            'Name': name,
             'Model': 'ALL',
             'Status': 'ERROR',
             'MAE ($B)': np.nan,
@@ -108,7 +107,7 @@ def create_comparison_summary(ticker: str, results: dict) -> pd.DataFrame:
         for model_name, result in results.items():
             if isinstance(result, dict) and 'error' in result:
                 summary_data.append({
-                    'Ticker': ticker,
+                    'Name': name,
                     'Model': model_name,
                     'Status': 'ERROR',
                     'MAE ($B)': np.nan,
@@ -120,7 +119,7 @@ def create_comparison_summary(ticker: str, results: dict) -> pd.DataFrame:
             elif isinstance(result, dict) and 'metrics' in result:
                 metrics = result['metrics']
                 summary_data.append({
-                    'Ticker': ticker,
+                    'Name': name,
                     'Model': model_name,
                     'Status': 'SUCCESS',
                     'MAE ($B)': metrics['MAE'] / 1e9,
@@ -139,11 +138,11 @@ def create_comparison_summary(ticker: str, results: dict) -> pd.DataFrame:
     return pd.concat([df_success, df_error], ignore_index=True)
 
 
-def save_comparison_results(ticker: str, summary_df: pd.DataFrame):
-    """Save comparison results to CSV."""
+def save_comparison_results(name: str, summary_df: pd.DataFrame):
+    """Save comparison results to CSV using company name."""
     settings.RESULT_DIR.mkdir(parents=True, exist_ok=True)
 
-    output_file = settings.RESULT_DIR / f"{ticker}_model_comparison.csv"
+    output_file = settings.RESULT_DIR / f"{name}_model_comparison.csv"
     summary_df.to_csv(output_file, index=False)
 
     logger.info(f"\n✓ Comparison results saved to: {output_file}")
@@ -187,9 +186,9 @@ def print_comparison_table(summary_df: pd.DataFrame):
     logger.info("\n" + "=" * 80)
 
 
-def run_comparison_all_tickers(models_to_compare: list = None, test_years: int = 4):
+def run_comparison_all_companies(models_to_compare: list = None, test_years: int = 4):
     """
-    Run model comparison for all tickers in tickers.txt.
+    Run model comparison for all companies in tickers.txt.
 
     Args:
         models_to_compare: List of model names (default: all ARIMA + ensembles)
@@ -198,48 +197,48 @@ def run_comparison_all_tickers(models_to_compare: list = None, test_years: int =
     companies = load_tickers()
 
     if not companies:
-        logger.error("No tickers found in tickers.txt")
+        logger.error("No companies found in tickers.txt")
         return
 
-    tickers = [c['TICKER'] for c in companies]
-
     logger.info("\n" + "=" * 80)
-    logger.info("MODEL COMPARISON ANALYSIS - ALL TICKERS")
+    logger.info("MODEL COMPARISON ANALYSIS - ALL COMPANIES")
     logger.info("=" * 80)
-    logger.info(f"Processing {len(tickers)} tickers: {', '.join(tickers)}")
+    logger.info(f"Processing {len(companies)} companies")
     logger.info(f"Test period: {test_years} years")
     logger.info("=" * 80 + "\n")
 
     all_summaries = []
 
-    for ticker in tickers:
-        # Run comparison for ticker
-        results = run_comparison_for_ticker(ticker, models_to_compare, test_years)
+    for company in companies:
+        name = company['NAME']
+
+        # Run comparison for company
+        results = run_comparison_for_company(name, models_to_compare, test_years)
 
         # Create summary
-        summary_df = create_comparison_summary(ticker, results)
+        summary_df = create_comparison_summary(name, results)
         all_summaries.append(summary_df)
 
         # Save results
-        save_comparison_results(ticker, summary_df)
+        save_comparison_results(name, summary_df)
 
         # Print comparison table
         print_comparison_table(summary_df)
 
-    # Combined summary for all tickers
+    # Combined summary for all companies
     if all_summaries:
         logger.info("\n" + "=" * 80)
-        logger.info("OVERALL SUMMARY - ALL TICKERS")
+        logger.info("OVERALL SUMMARY - ALL COMPANIES")
         logger.info("=" * 80)
 
         combined_df = pd.concat(all_summaries, ignore_index=True)
 
         # Save combined results
-        combined_file = settings.RESULT_DIR / "all_tickers_model_comparison.csv"
+        combined_file = settings.RESULT_DIR / "all_companies_model_comparison.csv"
         combined_df.to_csv(combined_file, index=False)
         logger.info(f"\n✓ Combined results saved to: {combined_file}")
 
-        # Average performance by model (across all tickers)
+        # Average performance by model (across all companies)
         df_success = combined_df[combined_df['Status'] == 'SUCCESS']
 
         if not df_success.empty:
@@ -252,7 +251,7 @@ def run_comparison_all_tickers(models_to_compare: list = None, test_years: int =
 
             avg_by_model = avg_by_model.sort_values('MAPE (%)')
 
-            logger.info("\nAverage Performance by Model (across all tickers):\n")
+            logger.info("\nAverage Performance by Model (across all companies):\n")
             print(avg_by_model.to_string())
 
         logger.info("\n" + "=" * 80)
@@ -261,8 +260,9 @@ def run_comparison_all_tickers(models_to_compare: list = None, test_years: int =
 if __name__ == "__main__":
     # Parse command line arguments
     if len(sys.argv) > 1:
-        # Single ticker mode
+        # Single company mode - accept ticker
         ticker = sys.argv[1].upper()
+        name = get_company_name(ticker)
 
         # Optional: specify models
         models = DEFAULT_MODELS
@@ -274,11 +274,11 @@ if __name__ == "__main__":
         if len(sys.argv) > 3:
             test_years = int(sys.argv[3])
 
-        results = run_comparison_for_ticker(ticker, models, test_years)
-        summary_df = create_comparison_summary(ticker, results)
-        save_comparison_results(ticker, summary_df)
+        results = run_comparison_for_company(name, models, test_years)
+        summary_df = create_comparison_summary(name, results)
+        save_comparison_results(name, summary_df)
         print_comparison_table(summary_df)
 
     else:
-        # All tickers mode
-        run_comparison_all_tickers()
+        # All companies mode
+        run_comparison_all_companies()

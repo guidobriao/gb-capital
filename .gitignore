@@ -188,4 +188,7 @@ data/
 plots/
 lightning_logs/
 
-custom/
+custom/result/
+output.png
+
+result/
